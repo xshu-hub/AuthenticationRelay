@@ -10,6 +10,7 @@
 - **凭证加密**: 使用 Fernet 对称加密存储密码
 - **Web 管理界面**: React 前端，方便配置管理
 - **API Key 认证**: 保护 API 访问安全
+- **用户角色区分**: 支持管理员和普通用户两种角色，权限分离
 
 ## 快速开始
 
@@ -36,11 +37,15 @@ server:
   host: "0.0.0.0"
   port: 8000
 
-api_key: "your-secret-api-key-here"  # 修改为安全的 API Key
+# API 密钥配置（支持两种角色）
+api_keys:
+  admin: "your-admin-api-key-here"  # 管理员密钥
+  user: "your-user-api-key-here"    # 普通用户密钥
 ```
 
 环境变量：
-- `API_KEY`: API 访问密钥
+- `ADMIN_API_KEY`: 管理员 API 密钥
+- `USER_API_KEY`: 普通用户 API 密钥
 - `ENCRYPTION_KEY`: 加密密钥（可选，不设置会自动生成）
 - `SERVER_HOST`: 服务器地址
 - `SERVER_PORT`: 服务器端口
@@ -67,15 +72,18 @@ uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
 所有 API 请求需要在 Header 中携带 API Key：
 
 ```
-X-API-Key: your-secret-api-key-here
+X-API-Key: your-api-key-here
 ```
+
+根据使用的 API Key 不同，会获得不同的权限（详见"用户角色"章节）。
 
 ### 获取认证 Cookie
 
 ```bash
+# 普通用户或管理员都可以调用
 curl -X POST http://localhost:8000/api/auth/cookie \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: your-secret-api-key-here" \
+  -H "X-API-Key: your-user-api-key-here" \
   -d '{"provider_id": "sso_a", "key": "test1_user"}'
 ```
 
@@ -126,22 +134,37 @@ with sync_playwright() as p:
     # 现在已经是登录状态
 ```
 
+## 用户角色
+
+系统支持两种用户角色，通过不同的 API Key 区分：
+
+| 角色 | API Key | 权限范围 |
+|------|---------|----------|
+| 管理员 (admin) | `api_keys.admin` | 全部功能（SSO 平台配置 + 字段管理 + 缓存管理） |
+| 普通用户 (user) | `api_keys.user` | 字段账号增删改查、获取 Cookie、缓存管理 |
+
+**典型使用场景**：
+- **管理员**：通过 Web 界面配置 SSO 平台参数（选择器、URL 等）
+- **普通用户**：通过 Web 界面管理字段账号（账户密码）
+- **自动化脚本**：使用 `user_api_key` 调用 `/api/auth/cookie` 获取 Cookie
+
 ## API 端点
 
-| 端点 | 方法 | 描述 |
-|------|------|------|
-| `/api/providers` | GET | 列出所有 SSO 平台 |
-| `/api/providers` | POST | 创建 SSO 平台 |
-| `/api/providers/{id}` | GET | 获取平台详情 |
-| `/api/providers/{id}` | PUT | 更新平台配置 |
-| `/api/providers/{id}` | DELETE | 删除平台 |
-| `/api/providers/{id}/fields` | GET | 列出平台字段 |
-| `/api/providers/{id}/fields` | POST | 添加字段账号 |
-| `/api/providers/{id}/fields/{key}` | PUT | 更新字段账号 |
-| `/api/providers/{id}/fields/{key}` | DELETE | 删除字段账号 |
-| `/api/auth/cookie` | POST | 获取认证 Cookie |
-| `/api/cache/stats` | GET | 获取缓存统计 |
-| `/api/cache` | DELETE | 清空所有缓存 |
+| 端点 | 方法 | 描述 | 权限 |
+|------|------|------|------|
+| `/api/providers` | GET | 列出所有 SSO 平台 | 全部 |
+| `/api/providers` | POST | 创建 SSO 平台 | 管理员 |
+| `/api/providers/{id}` | GET | 获取平台详情 | 全部 |
+| `/api/providers/{id}` | PUT | 更新平台配置 | 管理员 |
+| `/api/providers/{id}` | DELETE | 删除平台 | 管理员 |
+| `/api/providers/{id}/fields` | GET | 列出平台字段 | 全部 |
+| `/api/providers/{id}/fields` | POST | 添加字段账号 | 全部 |
+| `/api/providers/{id}/fields/{key}` | PUT | 更新字段账号 | 全部 |
+| `/api/providers/{id}/fields/{key}` | DELETE | 删除字段账号 | 全部 |
+| `/api/auth/cookie` | POST | 获取认证 Cookie | 全部 |
+| `/api/auth/role` | GET | 获取当前用户角色 | 全部 |
+| `/api/cache/stats` | GET | 获取缓存统计 | 全部 |
+| `/api/cache` | DELETE | 清空所有缓存 | 全部 |
 
 ## SSO 平台配置说明
 
@@ -209,10 +232,11 @@ npm run build
 
 ## 安全注意事项
 
-1. **修改默认 API Key**: 生产环境务必修改 `config.yaml` 中的 `api_key`
-2. **限制网络访问**: 建议只在内网或通过 VPN 访问
-3. **定期更换密码**: 定期更新 SSO 账号密码
-4. **日志脱敏**: 生产环境建议调整日志级别，避免敏感信息泄露
+1. **修改默认 API Key**: 生产环境务必修改 `config.yaml` 中的 `api_keys.admin` 和 `api_keys.user`
+2. **权限最小化**: 自动化脚本应使用 `user_api_key`，仅管理员使用 `admin_api_key`
+3. **限制网络访问**: 建议只在内网或通过 VPN 访问
+4. **定期更换密码**: 定期更新 SSO 账号密码
+5. **日志脱敏**: 生产环境建议调整日志级别，避免敏感信息泄露
 
 ## License
 
