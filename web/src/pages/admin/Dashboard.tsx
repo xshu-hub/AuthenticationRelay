@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { providersApi, cacheApi, authApi } from '../api/client';
-import type { SSOProviderListItem, CacheStats } from '../types';
+import { providersApi, cacheApi, authApi } from '../../api/client';
+import type { SSOProviderListItem, CacheStats } from '../../types';
 
-export default function Dashboard() {
+export default function AdminDashboard() {
   const [providers, setProviders] = useState<SSOProviderListItem[]>([]);
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -59,7 +59,7 @@ export default function Dashboard() {
         key: testKey,
       });
       setTestResult(`认证成功！获取到 ${Object.keys(result.cookies).length} 个 Cookie`);
-      await loadData(); // 刷新缓存统计
+      await loadData();
     } catch (err) {
       setTestResult(`认证失败: ${err instanceof Error ? err.message : '未知错误'}`);
     } finally {
@@ -70,7 +70,7 @@ export default function Dashboard() {
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
-        <div className="text-gray-500">加载中...</div>
+        <div className="text-slate-500">加载中...</div>
       </div>
     );
   }
@@ -79,7 +79,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-800">仪表盘</h1>
+      <h1 className="text-2xl font-bold text-slate-800">仪表盘</h1>
 
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
@@ -89,17 +89,17 @@ export default function Dashboard() {
 
       {/* 统计卡片 */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="text-sm text-gray-500">SSO 平台数量</div>
-          <div className="text-3xl font-bold text-blue-600">{providers.length}</div>
+        <div className="bg-white rounded-lg shadow p-6 border-l-4 border-slate-600">
+          <div className="text-sm text-slate-500">SSO 平台数量</div>
+          <div className="text-3xl font-bold text-slate-700">{providers.length}</div>
         </div>
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="text-sm text-gray-500">字段账号数量</div>
-          <div className="text-3xl font-bold text-green-600">{totalFields}</div>
+        <div className="bg-white rounded-lg shadow p-6 border-l-4 border-emerald-500">
+          <div className="text-sm text-slate-500">字段账号数量</div>
+          <div className="text-3xl font-bold text-emerald-600">{totalFields}</div>
         </div>
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="text-sm text-gray-500">缓存的 Cookie</div>
-          <div className="text-3xl font-bold text-purple-600">
+        <div className="bg-white rounded-lg shadow p-6 border-l-4 border-amber-500">
+          <div className="text-sm text-slate-500">缓存的 Cookie</div>
+          <div className="text-3xl font-bold text-amber-600">
             {cacheStats?.total_entries || 0}
           </div>
         </div>
@@ -107,32 +107,32 @@ export default function Dashboard() {
 
       {/* 认证测试 */}
       <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-lg font-semibold mb-4">认证测试</h2>
+        <h2 className="text-lg font-semibold text-slate-800 mb-4">认证测试</h2>
         <div className="flex flex-wrap gap-4 items-end">
           <div>
-            <label className="block text-sm text-gray-600 mb-1">Provider ID</label>
+            <label className="block text-sm text-slate-600 mb-1">Provider ID</label>
             <input
               type="text"
               value={testProviderId}
               onChange={(e) => setTestProviderId(e.target.value)}
               placeholder="如: sso_a"
-              className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
             />
           </div>
           <div>
-            <label className="block text-sm text-gray-600 mb-1">Key</label>
+            <label className="block text-sm text-slate-600 mb-1">Key</label>
             <input
               type="text"
               value={testKey}
               onChange={(e) => setTestKey(e.target.value)}
               placeholder="如: test1_user"
-              className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
             />
           </div>
           <button
             onClick={handleTestAuth}
             disabled={testing}
-            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
+            className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50"
           >
             {testing ? '测试中...' : '测试认证'}
           </button>
@@ -141,7 +141,7 @@ export default function Dashboard() {
           <div
             className={`mt-4 p-3 rounded ${
               testResult.includes('成功')
-                ? 'bg-green-50 text-green-700'
+                ? 'bg-emerald-50 text-emerald-700'
                 : 'bg-red-50 text-red-700'
             }`}
           >
@@ -153,7 +153,7 @@ export default function Dashboard() {
       {/* 缓存状态 */}
       <div className="bg-white rounded-lg shadow p-6">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold">缓存状态</h2>
+          <h2 className="text-lg font-semibold text-slate-800">缓存状态</h2>
           <button
             onClick={handleClearCache}
             className="px-3 py-1 text-sm text-red-600 border border-red-300 rounded hover:bg-red-50"
@@ -165,14 +165,14 @@ export default function Dashboard() {
           <div className="space-y-4">
             {Object.entries(cacheStats.providers).map(([providerId, data]) => (
               <div key={providerId} className="border rounded-lg p-4">
-                <div className="font-medium text-gray-700 mb-2">
+                <div className="font-medium text-slate-700 mb-2">
                   {providerId} ({data.count} 个缓存)
                 </div>
                 <div className="space-y-1">
                   {data.entries.map((entry) => (
                     <div
                       key={entry.key}
-                      className="flex justify-between text-sm text-gray-600 bg-gray-50 px-3 py-2 rounded"
+                      className="flex justify-between text-sm text-slate-600 bg-slate-50 px-3 py-2 rounded"
                     >
                       <span>{entry.key}</span>
                       <span>验证次数: {entry.validation_count}</span>
@@ -183,7 +183,7 @@ export default function Dashboard() {
             ))}
           </div>
         ) : (
-          <div className="text-gray-500 text-center py-8">暂无缓存数据</div>
+          <div className="text-slate-500 text-center py-8">暂无缓存数据</div>
         )}
       </div>
     </div>

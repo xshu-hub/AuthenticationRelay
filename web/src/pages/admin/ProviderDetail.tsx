@@ -1,14 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { providersApi, fieldsApi, cacheApi } from '../api/client';
-import type { SSOProvider, FieldAccountCreate } from '../types';
-import ProviderForm from '../components/ProviderForm';
-import FieldForm from '../components/FieldForm';
-import FieldList from '../components/FieldList';
-import { useAuth } from '../App';
+import { providersApi, fieldsApi, cacheApi } from '../../api/client';
+import type { SSOProvider, FieldAccountCreate } from '../../types';
+import ProviderForm from '../../components/ProviderForm';
+import FieldForm from '../../components/FieldForm';
+import FieldList from '../../components/FieldList';
 
-export default function ProviderDetail() {
-  const { isAdmin } = useAuth();
+export default function AdminProviderDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [provider, setProvider] = useState<SSOProvider | null>(null);
@@ -93,7 +91,7 @@ export default function ProviderDetail() {
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
-        <div className="text-gray-500">加载中...</div>
+        <div className="text-slate-500">加载中...</div>
       </div>
     );
   }
@@ -111,32 +109,28 @@ export default function ProviderDetail() {
       {/* 头部 */}
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">{provider.name}</h1>
-          <p className="text-gray-500">ID: {provider.id}</p>
+          <h1 className="text-2xl font-bold text-slate-800">{provider.name}</h1>
+          <p className="text-slate-500">ID: {provider.id}</p>
         </div>
         <div className="space-x-2">
           <button
             onClick={handleClearProviderCache}
-            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+            className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50"
           >
             清空缓存
           </button>
-          {isAdmin && (
-            <>
-              <button
-                onClick={() => setShowEditForm(true)}
-                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-              >
-                编辑
-              </button>
-              <button
-                onClick={handleDelete}
-                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
-              >
-                删除
-              </button>
-            </>
-          )}
+          <button
+            onClick={() => setShowEditForm(true)}
+            className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800"
+          >
+            编辑
+          </button>
+          <button
+            onClick={handleDelete}
+            className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
+          >
+            删除
+          </button>
         </div>
       </div>
 
@@ -148,49 +142,49 @@ export default function ProviderDetail() {
 
       {/* 平台配置信息 */}
       <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-lg font-semibold mb-4">配置信息</h2>
+        <h2 className="text-lg font-semibold text-slate-800 mb-4">配置信息</h2>
         <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <dt className="text-sm text-gray-500">登录 URL</dt>
-            <dd className="text-gray-900 break-all">{provider.login_url}</dd>
+            <dt className="text-sm text-slate-500">登录 URL</dt>
+            <dd className="text-slate-900 break-all">{provider.login_url}</dd>
           </div>
           <div>
-            <dt className="text-sm text-gray-500">用户名选择器</dt>
-            <dd className="text-gray-900 font-mono text-sm">{provider.username_selector}</dd>
+            <dt className="text-sm text-slate-500">用户名选择器</dt>
+            <dd className="text-slate-900 font-mono text-sm">{provider.username_selector}</dd>
           </div>
           <div>
-            <dt className="text-sm text-gray-500">密码选择器</dt>
-            <dd className="text-gray-900 font-mono text-sm">{provider.password_selector}</dd>
+            <dt className="text-sm text-slate-500">密码选择器</dt>
+            <dd className="text-slate-900 font-mono text-sm">{provider.password_selector}</dd>
           </div>
           <div>
-            <dt className="text-sm text-gray-500">提交按钮选择器</dt>
-            <dd className="text-gray-900 font-mono text-sm">{provider.submit_selector}</dd>
+            <dt className="text-sm text-slate-500">提交按钮选择器</dt>
+            <dd className="text-slate-900 font-mono text-sm">{provider.submit_selector}</dd>
           </div>
           {provider.success_indicator && (
             <div>
-              <dt className="text-sm text-gray-500">
+              <dt className="text-sm text-slate-500">
                 成功标识 ({provider.success_indicator_type})
               </dt>
-              <dd className="text-gray-900">{provider.success_indicator}</dd>
+              <dd className="text-slate-900">{provider.success_indicator}</dd>
             </div>
           )}
           {provider.validate_url && (
             <div>
-              <dt className="text-sm text-gray-500">验证 URL</dt>
-              <dd className="text-gray-900 break-all">{provider.validate_url}</dd>
+              <dt className="text-sm text-slate-500">验证 URL</dt>
+              <dd className="text-slate-900 break-all">{provider.validate_url}</dd>
             </div>
           )}
           {provider.invalid_indicator && (
             <div>
-              <dt className="text-sm text-gray-500">
+              <dt className="text-sm text-slate-500">
                 失效标识 ({provider.invalid_indicator_type})
               </dt>
-              <dd className="text-gray-900">{provider.invalid_indicator}</dd>
+              <dd className="text-slate-900">{provider.invalid_indicator}</dd>
             </div>
           )}
           <div>
-            <dt className="text-sm text-gray-500">登录后等待时间</dt>
-            <dd className="text-gray-900">{provider.wait_after_login} ms</dd>
+            <dt className="text-sm text-slate-500">登录后等待时间</dt>
+            <dd className="text-slate-900">{provider.wait_after_login} ms</dd>
           </div>
         </dl>
       </div>
@@ -198,10 +192,10 @@ export default function ProviderDetail() {
       {/* 字段列表 */}
       <div className="bg-white rounded-lg shadow p-6">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold">字段账号 ({provider.fields.length})</h2>
+          <h2 className="text-lg font-semibold text-slate-800">字段账号 ({provider.fields.length})</h2>
           <button
             onClick={() => setShowFieldForm(true)}
-            className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
+            className="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600"
           >
             添加字段
           </button>
@@ -214,12 +208,12 @@ export default function ProviderDetail() {
         />
       </div>
 
-      {/* 编辑平台表单（仅管理员） */}
-      {isAdmin && showEditForm && (
+      {/* 编辑平台表单 */}
+      {showEditForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto m-4">
             <div className="p-6">
-              <h2 className="text-xl font-bold mb-4">编辑 SSO 平台</h2>
+              <h2 className="text-xl font-bold text-slate-800 mb-4">编辑 SSO 平台</h2>
               <ProviderForm
                 initialData={provider}
                 onSubmit={handleUpdate}
@@ -236,7 +230,7 @@ export default function ProviderDetail() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full m-4">
             <div className="p-6">
-              <h2 className="text-xl font-bold mb-4">添加字段账号</h2>
+              <h2 className="text-xl font-bold text-slate-800 mb-4">添加字段账号</h2>
               <FieldForm
                 onSubmit={handleCreateField}
                 onCancel={() => setShowFieldForm(false)}

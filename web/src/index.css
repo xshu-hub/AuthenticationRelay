@@ -3,5 +3,10 @@
 @tailwind utilities;
 
 body {
-  @apply bg-gray-50 text-gray-900;
+  @apply text-gray-900;
+}
+
+/* 确保布局填满整个视口 */
+#root {
+  min-height: 100vh;
 }

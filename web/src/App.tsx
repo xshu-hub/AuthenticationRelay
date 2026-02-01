@@ -1,10 +1,21 @@
-import { Routes, Route, NavLink } from 'react-router-dom';
-import Dashboard from './pages/Dashboard';
-import Providers from './pages/Providers';
-import ProviderDetail from './pages/ProviderDetail';
+import { Routes, Route } from 'react-router-dom';
 import { useState, useEffect, createContext, useContext } from 'react';
 import { setApiKey, authApi } from './api/client';
 import type { UserRole } from './types';
+
+// 布局组件
+import AdminLayout from './layouts/AdminLayout';
+import UserLayout from './layouts/UserLayout';
+
+// 管理员页面
+import AdminDashboard from './pages/admin/Dashboard';
+import AdminProviders from './pages/admin/Providers';
+import AdminProviderDetail from './pages/admin/ProviderDetail';
+
+// 用户页面
+import UserHome from './pages/user/Home';
+import UserProviders from './pages/user/Providers';
+import UserProviderDetail from './pages/user/ProviderDetail';
 
 // 用户角色 Context
 interface AuthContextType {
@@ -56,11 +67,20 @@ function App() {
     }
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('apiKey');
+    localStorage.removeItem('userRole');
+    setIsConfigured(false);
+    setApiKeyInput('');
+    setRole(null);
+  };
+
+  // 登录页面
   if (!isConfigured) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100">
         <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
-          <h1 className="text-2xl font-bold mb-6 text-center">认证中继服务</h1>
+          <h1 className="text-2xl font-bold mb-6 text-center text-gray-800">认证中继服务</h1>
           <p className="text-gray-600 mb-4">请输入 API Key 以访问管理界面：</p>
           {loginError && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4 text-sm">
@@ -72,14 +92,14 @@ function App() {
             value={apiKeyInput}
             onChange={(e) => setApiKeyInput(e.target.value)}
             placeholder="输入 API Key"
-            className="w-full px-4 py-2 border rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-4 py-2 border rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-gray-500"
             onKeyDown={(e) => e.key === 'Enter' && handleSaveApiKey()}
             disabled={isLoading}
           />
           <button
             onClick={handleSaveApiKey}
             disabled={isLoading}
-            className="w-full bg-blue-500 text-white py-2 rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50"
+            className="w-full bg-gray-700 text-white py-2 rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50"
           >
             {isLoading ? '验证中...' : '确认'}
           </button>
@@ -90,76 +110,28 @@ function App() {
 
   const isAdmin = role === 'admin';
 
+  // 根据角色渲染不同的布局和路由
   return (
     <AuthContext.Provider value={{ role, isAdmin }}>
-      <div className="min-h-screen bg-gray-100">
-        {/* 导航栏 */}
-        <nav className="bg-white shadow-sm">
-          <div className="max-w-7xl mx-auto px-4">
-            <div className="flex justify-between h-16">
-              <div className="flex items-center">
-                <span className="text-xl font-bold text-gray-800">认证中继服务</span>
-                <div className="ml-10 flex space-x-4">
-                  <NavLink
-                    to="/"
-                    className={({ isActive }) =>
-                      `px-3 py-2 rounded-md text-sm font-medium ${
-                        isActive
-                          ? 'bg-blue-100 text-blue-700'
-                          : 'text-gray-600 hover:bg-gray-100'
-                      }`
-                    }
-                  >
-                    仪表盘
-                  </NavLink>
-                  <NavLink
-                    to="/providers"
-                    className={({ isActive }) =>
-                      `px-3 py-2 rounded-md text-sm font-medium ${
-                        isActive
-                          ? 'bg-blue-100 text-blue-700'
-                          : 'text-gray-600 hover:bg-gray-100'
-                      }`
-                    }
-                  >
-                    SSO 平台
-                  </NavLink>
-                </div>
-              </div>
-              <div className="flex items-center space-x-4">
-                <span className={`text-xs px-2 py-1 rounded ${
-                  isAdmin 
-                    ? 'bg-purple-100 text-purple-700' 
-                    : 'bg-gray-100 text-gray-600'
-                }`}>
-                  {isAdmin ? '管理员' : '普通用户'}
-                </span>
-                <button
-                  onClick={() => {
-                    localStorage.removeItem('apiKey');
-                    localStorage.removeItem('userRole');
-                    setIsConfigured(false);
-                    setApiKeyInput('');
-                    setRole(null);
-                  }}
-                  className="text-sm text-gray-500 hover:text-gray-700"
-                >
-                  退出
-                </button>
-              </div>
-            </div>
-          </div>
-        </nav>
-
-        {/* 主内容区 */}
-        <main className="max-w-7xl mx-auto py-6 px-4">
+      {isAdmin ? (
+        // 管理员后台 - 侧边栏布局
+        <AdminLayout onLogout={handleLogout}>
           <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/providers" element={<Providers />} />
-            <Route path="/providers/:id" element={<ProviderDetail />} />
+            <Route path="/" element={<AdminDashboard />} />
+            <Route path="/providers" element={<AdminProviders />} />
+            <Route path="/providers/:id" element={<AdminProviderDetail />} />
           </Routes>
-        </main>
-      </div>
+        </AdminLayout>
+      ) : (
+        // 用户前台 - 顶部导航布局
+        <UserLayout onLogout={handleLogout}>
+          <Routes>
+            <Route path="/" element={<UserHome />} />
+            <Route path="/providers" element={<UserProviders />} />
+            <Route path="/providers/:id" element={<UserProviderDetail />} />
+          </Routes>
+        </UserLayout>
+      )}
     </AuthContext.Provider>
   );
 }
