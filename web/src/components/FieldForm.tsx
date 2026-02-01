@@ -67,17 +67,20 @@ export default function FieldForm(props: FieldFormProps) {
     }));
   };
 
+  const inputClass = "w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:bg-white transition-all disabled:bg-gray-100 disabled:text-gray-500";
+  const labelClass = "block text-xs font-medium text-neutral-500 mb-1.5 uppercase tracking-wide";
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-6">
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm">
+        <div className="bg-red-50 border border-red-100 text-red-700 px-4 py-3 rounded-lg text-sm">
           {error}
         </div>
       )}
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          字段标识 (Key) *
+        <label className={labelClass}>
+          字段标识 (Key) <span className="text-red-500">*</span>
         </label>
         <input
           type="text"
@@ -87,13 +90,18 @@ export default function FieldForm(props: FieldFormProps) {
           disabled={isEdit}
           required={!isEdit}
           placeholder="如: test1_user"
-          className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+          className={inputClass}
         />
+        {!isEdit && (
+          <p className="mt-1.5 text-xs text-neutral-400">
+            唯一标识，创建后不可修改
+          </p>
+        )}
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          用户名 *
+        <label className={labelClass}>
+          用户名 <span className="text-red-500">*</span>
         </label>
         <input
           type="text"
@@ -102,13 +110,13 @@ export default function FieldForm(props: FieldFormProps) {
           onChange={handleChange}
           required
           placeholder="登录用户名"
-          className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className={inputClass}
         />
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          密码 {!isEdit && '*'}
+        <label className={labelClass}>
+          密码 {!isEdit && <span className="text-red-500">*</span>}
         </label>
         <input
           type="password"
@@ -117,27 +125,29 @@ export default function FieldForm(props: FieldFormProps) {
           onChange={handleChange}
           required={!isEdit}
           placeholder={isEdit ? '留空保持不变' : '登录密码'}
-          className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className={inputClass}
         />
         {isEdit && (
-          <p className="mt-1 text-xs text-gray-500">留空则保持原密码不变</p>
+          <p className="mt-1.5 text-xs text-neutral-400">
+            留空则保持原密码不变
+          </p>
         )}
       </div>
 
-      <div className="flex justify-end space-x-3 pt-4">
+      <div className="flex justify-end space-x-3 pt-6 border-t border-gray-100">
         <button
           type="button"
           onClick={onCancel}
-          className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+          className="px-4 py-2 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium transition-colors"
         >
           取消
         </button>
         <button
           type="submit"
           disabled={loading}
-          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
+          className="px-6 py-2 bg-neutral-900 text-white rounded-lg hover:bg-neutral-800 disabled:opacity-50 text-sm font-medium transition-colors shadow-sm"
         >
-          {loading ? '提交中...' : isEdit ? '保存' : '添加'}
+          {loading ? '提交中...' : isEdit ? '保存更改' : '添加字段'}
         </button>
       </div>
     </form>
