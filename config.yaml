@@ -1,0 +1,35 @@
+# 认证中继服务配置文件
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+  debug: false
+
+# API 密钥配置 (用于保护 API 访问)
+# 支持两种角色: admin (管理员) 和 user (普通用户)
+# - admin: 可以配置 SSO 平台、管理字段账号等全部功能
+# - user: 仅可以管理字段账号（增删改查）和获取认证 Cookie
+api_keys:
+  admin: "your-admin-api-key-here"
+  user: "your-user-api-key-here"
+
+# 加密配置
+encryption:
+  # 主密钥 (建议通过环境变量 ENCRYPTION_KEY 设置)
+  # 如果未设置，将自动生成并保存到 data/encryption.key
+  key: null
+
+# 数据存储路径
+storage:
+  data_dir: "./data"
+  providers_file: "providers.json"
+  
+# 日志配置
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Playwright 配置
+playwright:
+  headless: true
+  timeout: 30000  # 毫秒
