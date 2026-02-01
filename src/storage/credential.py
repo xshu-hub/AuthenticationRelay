@@ -1,206 +1,289 @@
 """
-凭证存储模块 - 管理 SSO 平台配置和字段账号
+凭证存储模块 - 管理 SSO 平台配置和字段账号（MySQL 版本）
 """
-import json
-from pathlib import Path
-from typing import Any
 from datetime import datetime
+from typing import Any
 
+from src.storage.database import get_database
 from src.utils.crypto import get_crypto_manager
 
 
 class CredentialStore:
-    """凭证存储管理器"""
+    """凭证存储管理器（使用 MySQL 数据库）"""
     
-    def __init__(self, data_dir: Path):
-        """
-        初始化凭证存储
-        
-        Args:
-            data_dir: 数据存储目录
-        """
-        self.data_dir = Path(data_dir)
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-        self.providers_file = self.data_dir / "providers.json"
-        self._providers: dict[str, dict] = {}
-        self._load()
-    
-    def _load(self) -> None:
-        """从文件加载数据"""
-        if self.providers_file.exists():
-            try:
-                with open(self.providers_file, "r", encoding="utf-8") as f:
-                    self._providers = json.load(f)
-            except (json.JSONDecodeError, IOError):
-                self._providers = {}
-        else:
-            self._providers = {}
-    
-    def _save(self) -> None:
-        """保存数据到文件"""
-        with open(self.providers_file, "w", encoding="utf-8") as f:
-            json.dump(self._providers, f, ensure_ascii=False, indent=2)
+    def __init__(self):
+        """初始化凭证存储"""
+        pass
     
     # ==================== SSO Provider 操作 ====================
     
-    def get_all_providers(self) -> list[dict]:
+    async def get_all_providers(self) -> list[dict]:
         """获取所有 SSO 平台（不含密码明文）"""
+        db = await get_database()
+        
+        # 获取所有 Provider
+        providers = await db.fetch_all(
+            "SELECT * FROM providers ORDER BY created_at DESC"
+        )
+        
         result = []
-        for provider_id, provider in self._providers.items():
-            provider_copy = provider.copy()
-            # 移除字段中的密码
-            if "fields" in provider_copy:
-                provider_copy["fields"] = [
-                    {k: v for k, v in field.items() if k != "password"}
-                    for field in provider_copy["fields"]
-                ]
-            result.append(provider_copy)
+        for provider in providers:
+            provider_dict = self._row_to_provider_dict(provider)
+            # 获取该 Provider 的 Fields（不含密码）
+            fields = await db.fetch_all(
+                "SELECT id, provider_id, `key`, username, created_at, updated_at FROM fields WHERE provider_id = %s",
+                (provider["id"],)
+            )
+            provider_dict["fields"] = [self._row_to_field_dict(f) for f in fields]
+            result.append(provider_dict)
+        
         return result
     
-    def get_provider(self, provider_id: str) -> dict | None:
+    async def get_provider(self, provider_id: str) -> dict | None:
         """获取单个 SSO 平台配置（不含密码明文）"""
-        provider = self._providers.get(provider_id)
-        if provider:
-            provider_copy = provider.copy()
-            if "fields" in provider_copy:
-                provider_copy["fields"] = [
-                    {k: v for k, v in field.items() if k != "password"}
-                    for field in provider_copy["fields"]
-                ]
-            return provider_copy
-        return None
-    
-    def get_provider_with_credentials(self, provider_id: str) -> dict | None:
-        """获取 SSO 平台配置（含解密后的密码）"""
-        provider = self._providers.get(provider_id)
+        db = await get_database()
+        
+        provider = await db.fetch_one(
+            "SELECT * FROM providers WHERE id = %s",
+            (provider_id,)
+        )
+        
         if not provider:
             return None
         
-        crypto = get_crypto_manager()
-        provider_copy = provider.copy()
+        provider_dict = self._row_to_provider_dict(provider)
         
-        if "fields" in provider_copy:
-            decrypted_fields = []
-            for field in provider_copy["fields"]:
-                field_copy = field.copy()
-                if "password" in field_copy and field_copy["password"]:
-                    try:
-                        field_copy["password"] = crypto.decrypt(field_copy["password"])
-                    except Exception:
-                        pass  # 解密失败保持原样
-                decrypted_fields.append(field_copy)
-            provider_copy["fields"] = decrypted_fields
+        # 获取 Fields（不含密码）
+        fields = await db.fetch_all(
+            "SELECT id, provider_id, `key`, username, created_at, updated_at FROM fields WHERE provider_id = %s",
+            (provider_id,)
+        )
+        provider_dict["fields"] = [self._row_to_field_dict(f) for f in fields]
         
-        return provider_copy
+        return provider_dict
     
-    def create_provider(self, provider_data: dict) -> dict:
+    async def get_provider_with_credentials(self, provider_id: str) -> dict | None:
+        """获取 SSO 平台配置（含解密后的密码）"""
+        db = await get_database()
+        crypto = get_crypto_manager()
+        
+        provider = await db.fetch_one(
+            "SELECT * FROM providers WHERE id = %s",
+            (provider_id,)
+        )
+        
+        if not provider:
+            return None
+        
+        provider_dict = self._row_to_provider_dict(provider)
+        
+        # 获取 Fields（含密码并解密）
+        fields = await db.fetch_all(
+            "SELECT * FROM fields WHERE provider_id = %s",
+            (provider_id,)
+        )
+        
+        decrypted_fields = []
+        for field in fields:
+            field_dict = self._row_to_field_dict(field)
+            if field.get("password"):
+                try:
+                    field_dict["password"] = crypto.decrypt(field["password"])
+                except Exception:
+                    field_dict["password"] = field["password"]
+            decrypted_fields.append(field_dict)
+        
+        provider_dict["fields"] = decrypted_fields
+        return provider_dict
+    
+    async def create_provider(self, provider_data: dict) -> dict:
         """创建 SSO 平台"""
+        db = await get_database()
+        
         provider_id = provider_data.get("id")
         if not provider_id:
             raise ValueError("Provider ID 不能为空")
         
-        if provider_id in self._providers:
+        # 检查是否已存在
+        existing = await db.fetch_one(
+            "SELECT id FROM providers WHERE id = %s",
+            (provider_id,)
+        )
+        if existing:
             raise ValueError(f"Provider '{provider_id}' 已存在")
         
-        # 确保 fields 字段存在
-        if "fields" not in provider_data:
-            provider_data["fields"] = []
+        now = datetime.now()
         
-        # 加密字段中的密码
+        # 插入 Provider
+        await db.execute(
+            """
+            INSERT INTO providers (
+                id, name, login_url, username_selector, password_selector,
+                submit_selector, success_indicator, success_indicator_type,
+                validate_url, invalid_indicator, invalid_indicator_type,
+                wait_after_login, created_at, updated_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                provider_id,
+                provider_data.get("name", ""),
+                provider_data.get("login_url", ""),
+                provider_data.get("username_selector", ""),
+                provider_data.get("password_selector", ""),
+                provider_data.get("submit_selector", ""),
+                provider_data.get("success_indicator"),
+                provider_data.get("success_indicator_type", "url_contains"),
+                provider_data.get("validate_url"),
+                provider_data.get("invalid_indicator"),
+                provider_data.get("invalid_indicator_type", "url_contains"),
+                provider_data.get("wait_after_login", 2000),
+                now,
+                now,
+            )
+        )
+        
+        # 处理 Fields（如果有）
         crypto = get_crypto_manager()
-        encrypted_fields = []
         for field in provider_data.get("fields", []):
-            field_copy = field.copy()
-            if "password" in field_copy and field_copy["password"]:
-                field_copy["password"] = crypto.encrypt(field_copy["password"])
-            encrypted_fields.append(field_copy)
+            password = field.get("password", "")
+            if password:
+                password = crypto.encrypt(password)
+            
+            await db.execute(
+                """
+                INSERT INTO fields (provider_id, `key`, username, password, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (provider_id, field.get("key", ""), field.get("username", ""), password, now, now)
+            )
         
-        provider_data["fields"] = encrypted_fields
-        provider_data["created_at"] = datetime.now().isoformat()
-        provider_data["updated_at"] = datetime.now().isoformat()
-        
-        self._providers[provider_id] = provider_data
-        self._save()
-        
-        return self.get_provider(provider_id)
+        return await self.get_provider(provider_id)
     
-    def update_provider(self, provider_id: str, provider_data: dict) -> dict | None:
+    async def update_provider(self, provider_id: str, provider_data: dict) -> dict | None:
         """更新 SSO 平台（不更新 fields）"""
-        if provider_id not in self._providers:
+        db = await get_database()
+        
+        # 检查是否存在
+        existing = await db.fetch_one(
+            "SELECT id FROM providers WHERE id = %s",
+            (provider_id,)
+        )
+        if not existing:
             return None
         
-        existing = self._providers[provider_id]
+        # 构建更新语句
+        update_fields = []
+        update_values = []
         
-        # 保留原有的 fields 和 created_at
-        fields = existing.get("fields", [])
-        created_at = existing.get("created_at")
+        field_mapping = {
+            "name": "name",
+            "login_url": "login_url",
+            "username_selector": "username_selector",
+            "password_selector": "password_selector",
+            "submit_selector": "submit_selector",
+            "success_indicator": "success_indicator",
+            "success_indicator_type": "success_indicator_type",
+            "validate_url": "validate_url",
+            "invalid_indicator": "invalid_indicator",
+            "invalid_indicator_type": "invalid_indicator_type",
+            "wait_after_login": "wait_after_login",
+        }
         
-        # 更新其他字段
-        for key, value in provider_data.items():
-            if key not in ("id", "fields", "created_at"):
-                existing[key] = value
+        for key, column in field_mapping.items():
+            if key in provider_data:
+                update_fields.append(f"{column} = %s")
+                update_values.append(provider_data[key])
         
-        existing["fields"] = fields
-        existing["created_at"] = created_at
-        existing["updated_at"] = datetime.now().isoformat()
+        if update_fields:
+            update_fields.append("updated_at = %s")
+            update_values.append(datetime.now())
+            update_values.append(provider_id)
+            
+            await db.execute(
+                f"UPDATE providers SET {', '.join(update_fields)} WHERE id = %s",
+                tuple(update_values)
+            )
         
-        self._save()
-        return self.get_provider(provider_id)
+        return await self.get_provider(provider_id)
     
-    def delete_provider(self, provider_id: str) -> bool:
+    async def delete_provider(self, provider_id: str) -> bool:
         """删除 SSO 平台"""
-        if provider_id in self._providers:
-            del self._providers[provider_id]
-            self._save()
-            return True
-        return False
+        db = await get_database()
+        
+        # 由于有外键约束，删除 Provider 时会自动删除关联的 Fields
+        rowcount = await db.execute(
+            "DELETE FROM providers WHERE id = %s",
+            (provider_id,)
+        )
+        
+        return rowcount > 0
     
     # ==================== Field 操作 ====================
     
-    def get_fields(self, provider_id: str) -> list[dict] | None:
+    async def get_fields(self, provider_id: str) -> list[dict] | None:
         """获取平台下所有字段（不含密码）"""
-        provider = self._providers.get(provider_id)
+        db = await get_database()
+        
+        # 先检查 Provider 是否存在
+        provider = await db.fetch_one(
+            "SELECT id FROM providers WHERE id = %s",
+            (provider_id,)
+        )
         if not provider:
             return None
         
-        return [
-            {k: v for k, v in field.items() if k != "password"}
-            for field in provider.get("fields", [])
-        ]
+        fields = await db.fetch_all(
+            "SELECT id, provider_id, `key`, username, created_at, updated_at FROM fields WHERE provider_id = %s",
+            (provider_id,)
+        )
+        
+        return [self._row_to_field_dict(f) for f in fields]
     
-    def get_field(self, provider_id: str, key: str) -> dict | None:
+    async def get_field(self, provider_id: str, key: str) -> dict | None:
         """获取单个字段（不含密码）"""
-        provider = self._providers.get(provider_id)
-        if not provider:
+        db = await get_database()
+        
+        field = await db.fetch_one(
+            "SELECT id, provider_id, `key`, username, created_at, updated_at FROM fields WHERE provider_id = %s AND `key` = %s",
+            (provider_id, key)
+        )
+        
+        if not field:
             return None
         
-        for field in provider.get("fields", []):
-            if field.get("key") == key:
-                return {k: v for k, v in field.items() if k != "password"}
-        return None
+        return self._row_to_field_dict(field)
     
-    def get_field_with_credentials(self, provider_id: str, key: str) -> dict | None:
+    async def get_field_with_credentials(self, provider_id: str, key: str) -> dict | None:
         """获取字段（含解密后的密码）"""
-        provider = self._providers.get(provider_id)
-        if not provider:
-            return None
-        
+        db = await get_database()
         crypto = get_crypto_manager()
         
-        for field in provider.get("fields", []):
-            if field.get("key") == key:
-                field_copy = field.copy()
-                if "password" in field_copy and field_copy["password"]:
-                    try:
-                        field_copy["password"] = crypto.decrypt(field_copy["password"])
-                    except Exception:
-                        pass
-                return field_copy
-        return None
+        field = await db.fetch_one(
+            "SELECT * FROM fields WHERE provider_id = %s AND `key` = %s",
+            (provider_id, key)
+        )
+        
+        if not field:
+            return None
+        
+        field_dict = self._row_to_field_dict(field)
+        if field.get("password"):
+            try:
+                field_dict["password"] = crypto.decrypt(field["password"])
+            except Exception:
+                field_dict["password"] = field["password"]
+        
+        return field_dict
     
-    def create_field(self, provider_id: str, field_data: dict) -> dict | None:
+    async def create_field(self, provider_id: str, field_data: dict) -> dict | None:
         """创建字段账号"""
-        provider = self._providers.get(provider_id)
+        db = await get_database()
+        
+        # 检查 Provider 是否存在
+        provider = await db.fetch_one(
+            "SELECT id FROM providers WHERE id = %s",
+            (provider_id,)
+        )
         if not provider:
             return None
         
@@ -209,69 +292,134 @@ class CredentialStore:
             raise ValueError("Field key 不能为空")
         
         # 检查是否已存在
-        for field in provider.get("fields", []):
-            if field.get("key") == key:
-                raise ValueError(f"Field '{key}' 已存在")
+        existing = await db.fetch_one(
+            "SELECT id FROM fields WHERE provider_id = %s AND `key` = %s",
+            (provider_id, key)
+        )
+        if existing:
+            raise ValueError(f"Field '{key}' 已存在")
         
         # 加密密码
         crypto = get_crypto_manager()
-        field_copy = field_data.copy()
-        if "password" in field_copy and field_copy["password"]:
-            field_copy["password"] = crypto.encrypt(field_copy["password"])
+        password = field_data.get("password", "")
+        if password:
+            password = crypto.encrypt(password)
         
-        field_copy["created_at"] = datetime.now().isoformat()
-        field_copy["updated_at"] = datetime.now().isoformat()
+        now = datetime.now()
         
-        if "fields" not in provider:
-            provider["fields"] = []
-        provider["fields"].append(field_copy)
-        provider["updated_at"] = datetime.now().isoformat()
+        await db.execute(
+            """
+            INSERT INTO fields (provider_id, `key`, username, password, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            (provider_id, key, field_data.get("username", ""), password, now, now)
+        )
         
-        self._save()
-        return self.get_field(provider_id, key)
+        # 更新 Provider 的 updated_at
+        await db.execute(
+            "UPDATE providers SET updated_at = %s WHERE id = %s",
+            (now, provider_id)
+        )
+        
+        return await self.get_field(provider_id, key)
     
-    def update_field(self, provider_id: str, key: str, field_data: dict) -> dict | None:
+    async def update_field(self, provider_id: str, key: str, field_data: dict) -> dict | None:
         """更新字段账号"""
-        provider = self._providers.get(provider_id)
-        if not provider:
-            return None
-        
+        db = await get_database()
         crypto = get_crypto_manager()
         
-        for i, field in enumerate(provider.get("fields", [])):
-            if field.get("key") == key:
-                # 更新字段
-                for k, v in field_data.items():
-                    if k == "key":
-                        continue  # 不允许修改 key
-                    if k == "password" and v:
-                        field[k] = crypto.encrypt(v)
-                    else:
-                        field[k] = v
-                
-                field["updated_at"] = datetime.now().isoformat()
-                provider["updated_at"] = datetime.now().isoformat()
-                
-                self._save()
-                return self.get_field(provider_id, key)
+        # 检查是否存在
+        existing = await db.fetch_one(
+            "SELECT id FROM fields WHERE provider_id = %s AND `key` = %s",
+            (provider_id, key)
+        )
+        if not existing:
+            return None
         
-        return None
+        # 构建更新语句
+        update_fields = []
+        update_values = []
+        
+        if "username" in field_data:
+            update_fields.append("username = %s")
+            update_values.append(field_data["username"])
+        
+        if "password" in field_data and field_data["password"]:
+            update_fields.append("password = %s")
+            update_values.append(crypto.encrypt(field_data["password"]))
+        
+        if update_fields:
+            now = datetime.now()
+            update_fields.append("updated_at = %s")
+            update_values.append(now)
+            update_values.extend([provider_id, key])
+            
+            await db.execute(
+                f"UPDATE fields SET {', '.join(update_fields)} WHERE provider_id = %s AND `key` = %s",
+                tuple(update_values)
+            )
+            
+            # 更新 Provider 的 updated_at
+            await db.execute(
+                "UPDATE providers SET updated_at = %s WHERE id = %s",
+                (now, provider_id)
+            )
+        
+        return await self.get_field(provider_id, key)
     
-    def delete_field(self, provider_id: str, key: str) -> bool:
+    async def delete_field(self, provider_id: str, key: str) -> bool:
         """删除字段账号"""
-        provider = self._providers.get(provider_id)
-        if not provider:
-            return False
+        db = await get_database()
         
-        fields = provider.get("fields", [])
-        for i, field in enumerate(fields):
-            if field.get("key") == key:
-                fields.pop(i)
-                provider["updated_at"] = datetime.now().isoformat()
-                self._save()
-                return True
+        rowcount = await db.execute(
+            "DELETE FROM fields WHERE provider_id = %s AND `key` = %s",
+            (provider_id, key)
+        )
+        
+        if rowcount > 0:
+            # 更新 Provider 的 updated_at
+            await db.execute(
+                "UPDATE providers SET updated_at = %s WHERE id = %s",
+                (datetime.now(), provider_id)
+            )
+            return True
         
         return False
+    
+    # ==================== 辅助方法 ====================
+    
+    def _row_to_provider_dict(self, row: dict) -> dict:
+        """将数据库行转换为 Provider 字典"""
+        return {
+            "id": row["id"],
+            "name": row["name"],
+            "login_url": row["login_url"],
+            "username_selector": row["username_selector"],
+            "password_selector": row["password_selector"],
+            "submit_selector": row["submit_selector"],
+            "success_indicator": row.get("success_indicator"),
+            "success_indicator_type": row.get("success_indicator_type", "url_contains"),
+            "validate_url": row.get("validate_url"),
+            "invalid_indicator": row.get("invalid_indicator"),
+            "invalid_indicator_type": row.get("invalid_indicator_type", "url_contains"),
+            "wait_after_login": row.get("wait_after_login", 2000),
+            "created_at": row.get("created_at").isoformat() if row.get("created_at") else None,
+            "updated_at": row.get("updated_at").isoformat() if row.get("updated_at") else None,
+            "fields": [],
+        }
+    
+    def _row_to_field_dict(self, row: dict) -> dict:
+        """将数据库行转换为 Field 字典"""
+        result = {
+            "key": row["key"],
+            "username": row["username"],
+            "created_at": row.get("created_at").isoformat() if row.get("created_at") else None,
+            "updated_at": row.get("updated_at").isoformat() if row.get("updated_at") else None,
+        }
+        # 如果有密码字段，添加它
+        if "password" in row:
+            result["password"] = row["password"]
+        return result
 
 
 # 全局凭证存储实例
@@ -286,16 +434,16 @@ def get_credential_store() -> CredentialStore:
     return _credential_store
 
 
-def init_credential_store(data_dir: Path) -> CredentialStore:
+def init_credential_store(data_dir=None) -> CredentialStore:
     """
     初始化全局凭证存储
     
     Args:
-        data_dir: 数据存储目录
+        data_dir: 数据存储目录（保留参数以兼容旧接口，但不再使用）
         
     Returns:
         凭证存储实例
     """
     global _credential_store
-    _credential_store = CredentialStore(data_dir)
+    _credential_store = CredentialStore()
     return _credential_store

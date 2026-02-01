@@ -20,3 +20,6 @@ httpx>=0.28.1
 
 # CORS
 python-multipart>=0.0.22
+
+# Database
+aiomysql>=0.2.0

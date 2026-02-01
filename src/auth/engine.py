@@ -261,8 +261,8 @@ class AuthService:
         cache = get_cookie_cache()
         store = get_credential_store()
         
-        # 获取 SSO 平台配置
-        provider = store.get_provider_with_credentials(provider_id)
+        # 获取 SSO 平台配置（异步）
+        provider = await store.get_provider_with_credentials(provider_id)
         if not provider:
             raise AuthenticationError(f"SSO 平台 '{provider_id}' 不存在")
         

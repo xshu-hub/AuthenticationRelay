@@ -28,6 +28,16 @@ class StorageConfig(BaseModel):
     providers_file: str = "providers.json"
 
 
+class DatabaseConfig(BaseModel):
+    """MySQL 数据库配置"""
+    host: str = "localhost"
+    port: int = 3306
+    user: str = "root"
+    password: str = ""
+    database: str = "auth_relay"
+    pool_size: int = 5
+
+
 class LoggingConfig(BaseModel):
     """日志配置"""
     level: str = "INFO"
@@ -55,6 +65,7 @@ class AppConfig(BaseModel):
     api_key: str | None = None
     encryption: EncryptionConfig = EncryptionConfig()
     storage: StorageConfig = StorageConfig()
+    database: DatabaseConfig = DatabaseConfig()
     logging: LoggingConfig = LoggingConfig()
     playwright: PlaywrightConfig = PlaywrightConfig()
 
@@ -111,6 +122,32 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
         if "server" not in config_data:
             config_data["server"] = {}
         config_data["server"]["port"] = int(os.environ["SERVER_PORT"])
+    
+    # 数据库配置环境变量
+    if os.environ.get("DB_HOST"):
+        if "database" not in config_data:
+            config_data["database"] = {}
+        config_data["database"]["host"] = os.environ["DB_HOST"]
+    
+    if os.environ.get("DB_PORT"):
+        if "database" not in config_data:
+            config_data["database"] = {}
+        config_data["database"]["port"] = int(os.environ["DB_PORT"])
+    
+    if os.environ.get("DB_USER"):
+        if "database" not in config_data:
+            config_data["database"] = {}
+        config_data["database"]["user"] = os.environ["DB_USER"]
+    
+    if os.environ.get("DB_PASSWORD"):
+        if "database" not in config_data:
+            config_data["database"] = {}
+        config_data["database"]["password"] = os.environ["DB_PASSWORD"]
+    
+    if os.environ.get("DB_NAME"):
+        if "database" not in config_data:
+            config_data["database"] = {}
+        config_data["database"]["database"] = os.environ["DB_NAME"]
     
     return AppConfig(**config_data)
 

@@ -8,13 +8,22 @@
 - **多账户管理**: 每个平台支持多个字段账号绑定
 - **Cookie 缓存**: 内存缓存 Cookie，自动验证有效性
 - **凭证加密**: 使用 Fernet 对称加密存储密码
+- **MySQL 数据库**: 使用 MySQL 存储数据，支持自动迁移
+- **审计日志**: 记录所有操作日志，支持查询和统计
 - **Web 管理界面**: React 前端，方便配置管理
 - **API Key 认证**: 保护 API 访问安全
 - **用户角色区分**: 支持管理员和普通用户两种角色，权限分离
 
 ## 快速开始
 
-### 1. 安装依赖
+### 1. 环境准备
+
+**系统要求**：
+- Python 3.12+
+- MySQL 5.7+ 或 MySQL 8.0+
+- Node.js 18+（前端开发需要）
+
+**安装依赖**：
 
 ```bash
 # 后端依赖
@@ -27,6 +36,10 @@ playwright install chromium
 cd web
 npm install
 ```
+
+**MySQL 准备**：
+
+确保 MySQL 服务已运行。系统会在首次启动时自动创建数据库和表结构。
 
 ### 2. 配置
 
@@ -41,6 +54,15 @@ server:
 api_keys:
   admin: "your-admin-api-key-here"  # 管理员密钥
   user: "your-user-api-key-here"    # 普通用户密钥
+
+# MySQL 数据库配置
+database:
+  host: "localhost"
+  port: 3306
+  user: "root"
+  password: "your-password"
+  database: "auth_relay"
+  pool_size: 5
 ```
 
 环境变量：
@@ -49,6 +71,13 @@ api_keys:
 - `ENCRYPTION_KEY`: 加密密钥（可选，不设置会自动生成）
 - `SERVER_HOST`: 服务器地址
 - `SERVER_PORT`: 服务器端口
+- `DB_HOST`: 数据库主机
+- `DB_PORT`: 数据库端口
+- `DB_USER`: 数据库用户名
+- `DB_PASSWORD`: 数据库密码
+- `DB_NAME`: 数据库名称
+
+> **注意**: 首次启动时，系统会自动创建数据库和表结构。如果存在旧的 JSON 数据文件，会自动迁移到数据库中。
 
 ### 3. 启动服务
 
@@ -165,6 +194,8 @@ with sync_playwright() as p:
 | `/api/auth/role` | GET | 获取当前用户角色 | 全部 |
 | `/api/cache/stats` | GET | 获取缓存统计 | 全部 |
 | `/api/cache` | DELETE | 清空所有缓存 | 全部 |
+| `/api/logs` | GET | 查询审计日志（支持分页、筛选） | 管理员 |
+| `/api/logs/stats` | GET | 获取日志统计信息 | 管理员 |
 
 ## SSO 平台配置说明
 
@@ -199,16 +230,65 @@ AuthenticationRelay/
 │   ├── auth/
 │   │   └── engine.py     # 认证引擎
 │   ├── storage/
+│   │   ├── database.py   # MySQL 数据库模块
 │   │   ├── credential.py # 凭证存储
-│   │   └── cookie_cache.py # Cookie 缓存
+│   │   ├── cookie_cache.py # Cookie 缓存
+│   │   └── audit_log.py  # 审计日志服务
 │   └── utils/
 │       ├── config.py     # 配置加载
 │       └── crypto.py     # 加密工具
 ├── web/                  # React 前端
 │   ├── src/
+│   │   ├── pages/
+│   │   │   ├── admin/
+│   │   │   │   ├── Dashboard.tsx  # 管理员仪表盘
+│   │   │   │   ├── Providers.tsx  # SSO 平台管理
+│   │   │   │   └── Logs.tsx       # 操作日志页面
+│   │   │   └── user/
+│   │   └── ...
 │   └── package.json
-└── data/                 # 数据存储目录（自动创建）
+└── data/                 # 数据存储目录（加密密钥等）
 ```
+
+## 审计日志
+
+系统会自动记录所有 API 操作，包括：
+
+- **Provider 操作**: 创建、更新、删除 SSO 平台
+- **Field 操作**: 创建、更新、删除字段账号
+- **认证操作**: 认证请求、成功、失败
+- **缓存操作**: 清空缓存
+
+### 查询日志
+
+管理员可以通过 API 或 Web 界面查询日志：
+
+```bash
+# 查询日志列表
+curl -X GET "http://localhost:8000/api/logs?page=1&page_size=20" \
+  -H "X-API-Key: your-admin-api-key"
+
+# 按操作类型筛选
+curl -X GET "http://localhost:8000/api/logs?action=provider.create" \
+  -H "X-API-Key: your-admin-api-key"
+
+# 获取日志统计
+curl -X GET "http://localhost:8000/api/logs/stats" \
+  -H "X-API-Key: your-admin-api-key"
+```
+
+### 日志筛选参数
+
+| 参数 | 说明 |
+|------|------|
+| `page` | 页码（从 1 开始） |
+| `page_size` | 每页数量（1-100） |
+| `action` | 操作类型（如 `provider.create`） |
+| `resource_type` | 资源类型（`provider`/`field`/`auth`/`cache`） |
+| `resource_id` | 资源标识 |
+| `success` | 是否成功（`true`/`false`） |
+| `start_time` | 开始时间（ISO 格式） |
+| `end_time` | 结束时间（ISO 格式） |
 
 ## 开发
 

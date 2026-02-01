@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, useNavigate } from 'react-router-dom';
 import { useState, useEffect, createContext, useContext } from 'react';
 import { setApiKey } from './api/client';
 import type { UserRole } from './types';
@@ -14,6 +14,7 @@ import Login from './pages/Login';
 import AdminDashboard from './pages/admin/Dashboard';
 import AdminProviders from './pages/admin/Providers';
 import AdminProviderDetail from './pages/admin/ProviderDetail';
+import AdminLogs from './pages/admin/Logs';
 
 // 用户页面
 import UserHome from './pages/user/Home';
@@ -33,6 +34,7 @@ export const useAuth = () => useContext(AuthContext);
 function App() {
   const [isConfigured, setIsConfigured] = useState(false);
   const [role, setRole] = useState<UserRole | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const savedKey = localStorage.getItem('apiKey');
@@ -47,6 +49,8 @@ function App() {
   const handleLoginSuccess = (userRole: UserRole) => {
     setRole(userRole);
     setIsConfigured(true);
+    // 登录成功后导航到首页
+    navigate('/', { replace: true });
   };
 
   const handleLogout = () => {
@@ -54,6 +58,8 @@ function App() {
     localStorage.removeItem('userRole');
     setIsConfigured(false);
     setRole(null);
+    // 登出后导航到首页（会显示登录页）
+    navigate('/', { replace: true });
   };
 
   // 登录页面
@@ -73,6 +79,7 @@ function App() {
             <Route path="/" element={<AdminDashboard />} />
             <Route path="/providers" element={<AdminProviders />} />
             <Route path="/providers/:id" element={<AdminProviderDetail />} />
+            <Route path="/logs" element={<AdminLogs />} />
           </Routes>
         </AdminLayout>
       ) : (

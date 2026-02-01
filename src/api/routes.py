@@ -2,10 +2,11 @@
 API 路由定义
 """
 import logging
+from datetime import datetime
 from enum import Enum
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Header, status
+from fastapi import APIRouter, Depends, HTTPException, Header, Request, Query, status
 
 from src.api.models import (
     SSOProviderCreate,
@@ -21,9 +22,13 @@ from src.api.models import (
     ErrorResponse,
     CacheStatsResponse,
     UserRoleResponse,
+    AuditLogResponse,
+    AuditLogListResponse,
+    AuditLogStatsResponse,
 )
 from src.storage.credential import get_credential_store
 from src.storage.cookie_cache import get_cookie_cache
+from src.storage.audit_log import get_audit_log_service, AuditAction, ResourceType
 from src.auth.engine import get_auth_service, AuthenticationError
 from src.utils.config import get_config
 
@@ -91,13 +96,29 @@ async def verify_api_key(x_api_key: Annotated[str | None, Header()] = None) -> s
     return x_api_key  # type: ignore
 
 
+def get_client_ip(request: Request) -> str:
+    """获取客户端 IP 地址"""
+    # 尝试从 X-Forwarded-For 头获取真实 IP
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    # 尝试从 X-Real-IP 头获取
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return real_ip
+    # 使用直连 IP
+    return request.client.host if request.client else "unknown"
+
+
 # ==================== SSO Provider 路由 ====================
 
 @router.get("/providers", response_model=list[SSOProviderListResponse], tags=["Providers"])
-async def list_providers(role: UserRole = Depends(verify_api_key_with_role)):
+async def list_providers(request: Request, role: UserRole = Depends(verify_api_key_with_role)):
     """列出所有 SSO 平台"""
     store = get_credential_store()
-    providers = store.get_all_providers()
+    audit = get_audit_log_service()
+    
+    providers = await store.get_all_providers()
     
     result = []
     for p in providers:
@@ -110,21 +131,54 @@ async def list_providers(role: UserRole = Depends(verify_api_key_with_role)):
             updated_at=p.get("updated_at"),
         ))
     
+    # 记录日志
+    await audit.log(
+        action=AuditAction.PROVIDER_LIST,
+        resource_type=ResourceType.PROVIDER,
+        user_role=role.value,
+        ip_address=get_client_ip(request),
+        details={"count": len(result)},
+    )
+    
     return result
 
 
 @router.post("/providers", response_model=SSOProviderResponse, tags=["Providers"])
 async def create_provider(
+    request: Request,
     provider: SSOProviderCreate,
     role: UserRole = Depends(require_admin)
 ):
     """创建 SSO 平台（需要管理员权限）"""
     store = get_credential_store()
+    audit = get_audit_log_service()
+    ip = get_client_ip(request)
     
     try:
-        created = store.create_provider(provider.model_dump())
+        created = await store.create_provider(provider.model_dump())
+        
+        # 记录成功日志
+        await audit.log(
+            action=AuditAction.PROVIDER_CREATE,
+            resource_type=ResourceType.PROVIDER,
+            resource_id=provider.id,
+            user_role=role.value,
+            ip_address=ip,
+            details={"name": provider.name},
+        )
+        
         return SSOProviderResponse(**created)
     except ValueError as e:
+        # 记录失败日志
+        await audit.log(
+            action=AuditAction.PROVIDER_CREATE,
+            resource_type=ResourceType.PROVIDER,
+            resource_id=provider.id,
+            user_role=role.value,
+            ip_address=ip,
+            details={"error": str(e)},
+            success=False,
+        )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
@@ -132,7 +186,7 @@ async def create_provider(
 async def get_provider(provider_id: str, role: UserRole = Depends(verify_api_key_with_role)):
     """获取 SSO 平台详情"""
     store = get_credential_store()
-    provider = store.get_provider(provider_id)
+    provider = await store.get_provider(provider_id)
     
     if not provider:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider not found")
@@ -142,34 +196,77 @@ async def get_provider(provider_id: str, role: UserRole = Depends(verify_api_key
 
 @router.put("/providers/{provider_id}", response_model=SSOProviderResponse, tags=["Providers"])
 async def update_provider(
+    request: Request,
     provider_id: str,
     provider: SSOProviderUpdate,
     role: UserRole = Depends(require_admin)
 ):
     """更新 SSO 平台（需要管理员权限）"""
     store = get_credential_store()
+    audit = get_audit_log_service()
+    ip = get_client_ip(request)
     
-    updated = store.update_provider(provider_id, provider.model_dump(exclude_unset=True))
+    updated = await store.update_provider(provider_id, provider.model_dump(exclude_unset=True))
     
     if not updated:
+        await audit.log(
+            action=AuditAction.PROVIDER_UPDATE,
+            resource_type=ResourceType.PROVIDER,
+            resource_id=provider_id,
+            user_role=role.value,
+            ip_address=ip,
+            details={"error": "Provider not found"},
+            success=False,
+        )
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider not found")
+    
+    await audit.log(
+        action=AuditAction.PROVIDER_UPDATE,
+        resource_type=ResourceType.PROVIDER,
+        resource_id=provider_id,
+        user_role=role.value,
+        ip_address=ip,
+        details={"updated_fields": list(provider.model_dump(exclude_unset=True).keys())},
+    )
     
     return SSOProviderResponse(**updated)
 
 
 @router.delete("/providers/{provider_id}", response_model=SuccessResponse, tags=["Providers"])
 async def delete_provider(
+    request: Request,
     provider_id: str,
     role: UserRole = Depends(require_admin)
 ):
     """删除 SSO 平台（需要管理员权限）"""
     store = get_credential_store()
     cache = get_cookie_cache()
+    audit = get_audit_log_service()
+    ip = get_client_ip(request)
     
-    if store.delete_provider(provider_id):
+    if await store.delete_provider(provider_id):
         # 同时清除相关缓存
         cache.invalidate_provider(provider_id)
+        
+        await audit.log(
+            action=AuditAction.PROVIDER_DELETE,
+            resource_type=ResourceType.PROVIDER,
+            resource_id=provider_id,
+            user_role=role.value,
+            ip_address=ip,
+        )
+        
         return SuccessResponse(message=f"Provider '{provider_id}' deleted")
+    
+    await audit.log(
+        action=AuditAction.PROVIDER_DELETE,
+        resource_type=ResourceType.PROVIDER,
+        resource_id=provider_id,
+        user_role=role.value,
+        ip_address=ip,
+        details={"error": "Provider not found"},
+        success=False,
+    )
     
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider not found")
 
@@ -184,7 +281,7 @@ async def delete_provider(
 async def list_fields(provider_id: str, role: UserRole = Depends(verify_api_key_with_role)):
     """列出平台下所有字段"""
     store = get_credential_store()
-    fields = store.get_fields(provider_id)
+    fields = await store.get_fields(provider_id)
     
     if fields is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider not found")
@@ -198,19 +295,50 @@ async def list_fields(provider_id: str, role: UserRole = Depends(verify_api_key_
     tags=["Fields"]
 )
 async def create_field(
+    request: Request,
     provider_id: str,
     field: FieldAccountCreate,
     role: UserRole = Depends(verify_api_key_with_role)
 ):
     """创建字段账号"""
     store = get_credential_store()
+    audit = get_audit_log_service()
+    ip = get_client_ip(request)
     
     try:
-        created = store.create_field(provider_id, field.model_dump())
+        created = await store.create_field(provider_id, field.model_dump())
         if created is None:
+            await audit.log(
+                action=AuditAction.FIELD_CREATE,
+                resource_type=ResourceType.FIELD,
+                resource_id=f"{provider_id}/{field.key}",
+                user_role=role.value,
+                ip_address=ip,
+                details={"error": "Provider not found"},
+                success=False,
+            )
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider not found")
+        
+        await audit.log(
+            action=AuditAction.FIELD_CREATE,
+            resource_type=ResourceType.FIELD,
+            resource_id=f"{provider_id}/{field.key}",
+            user_role=role.value,
+            ip_address=ip,
+            details={"username": field.username},
+        )
+        
         return FieldAccountResponse(**created)
     except ValueError as e:
+        await audit.log(
+            action=AuditAction.FIELD_CREATE,
+            resource_type=ResourceType.FIELD,
+            resource_id=f"{provider_id}/{field.key}",
+            user_role=role.value,
+            ip_address=ip,
+            details={"error": str(e)},
+            success=False,
+        )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
@@ -222,7 +350,7 @@ async def create_field(
 async def get_field(provider_id: str, key: str, role: UserRole = Depends(verify_api_key_with_role)):
     """获取字段详情"""
     store = get_credential_store()
-    field = store.get_field(provider_id, key)
+    field = await store.get_field(provider_id, key)
     
     if field is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
@@ -236,6 +364,7 @@ async def get_field(provider_id: str, key: str, role: UserRole = Depends(verify_
     tags=["Fields"]
 )
 async def update_field(
+    request: Request,
     provider_id: str,
     key: str,
     field: FieldAccountUpdate,
@@ -244,14 +373,34 @@ async def update_field(
     """更新字段账号"""
     store = get_credential_store()
     cache = get_cookie_cache()
+    audit = get_audit_log_service()
+    ip = get_client_ip(request)
     
-    updated = store.update_field(provider_id, key, field.model_dump(exclude_unset=True))
+    updated = await store.update_field(provider_id, key, field.model_dump(exclude_unset=True))
     
     if updated is None:
+        await audit.log(
+            action=AuditAction.FIELD_UPDATE,
+            resource_type=ResourceType.FIELD,
+            resource_id=f"{provider_id}/{key}",
+            user_role=role.value,
+            ip_address=ip,
+            details={"error": "Field not found"},
+            success=False,
+        )
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
     
     # 清除相关缓存（凭证变更后需要重新认证）
     cache.invalidate(provider_id, key)
+    
+    await audit.log(
+        action=AuditAction.FIELD_UPDATE,
+        resource_type=ResourceType.FIELD,
+        resource_id=f"{provider_id}/{key}",
+        user_role=role.value,
+        ip_address=ip,
+        details={"updated_fields": list(field.model_dump(exclude_unset=True).keys())},
+    )
     
     return FieldAccountResponse(**updated)
 
@@ -261,14 +410,40 @@ async def update_field(
     response_model=SuccessResponse,
     tags=["Fields"]
 )
-async def delete_field(provider_id: str, key: str, role: UserRole = Depends(verify_api_key_with_role)):
+async def delete_field(
+    request: Request,
+    provider_id: str,
+    key: str,
+    role: UserRole = Depends(verify_api_key_with_role)
+):
     """删除字段账号"""
     store = get_credential_store()
     cache = get_cookie_cache()
+    audit = get_audit_log_service()
+    ip = get_client_ip(request)
     
-    if store.delete_field(provider_id, key):
+    if await store.delete_field(provider_id, key):
         cache.invalidate(provider_id, key)
+        
+        await audit.log(
+            action=AuditAction.FIELD_DELETE,
+            resource_type=ResourceType.FIELD,
+            resource_id=f"{provider_id}/{key}",
+            user_role=role.value,
+            ip_address=ip,
+        )
+        
         return SuccessResponse(message=f"Field '{key}' deleted")
+    
+    await audit.log(
+        action=AuditAction.FIELD_DELETE,
+        resource_type=ResourceType.FIELD,
+        resource_id=f"{provider_id}/{key}",
+        user_role=role.value,
+        ip_address=ip,
+        details={"error": "Field not found"},
+        success=False,
+    )
     
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
 
@@ -276,16 +451,39 @@ async def delete_field(provider_id: str, key: str, role: UserRole = Depends(veri
 # ==================== 认证路由 ====================
 
 @router.post("/auth/cookie", response_model=AuthCookieResponse, tags=["Auth"])
-async def get_auth_cookie(request: AuthCookieRequest, role: UserRole = Depends(verify_api_key_with_role)):
+async def get_auth_cookie(
+    http_request: Request,
+    request: AuthCookieRequest,
+    role: UserRole = Depends(verify_api_key_with_role)
+):
     """
     获取认证 Cookie
     
     会自动检查缓存并验证有效性，失效时自动重新认证
     """
     service = get_auth_service()
+    audit = get_audit_log_service()
+    ip = get_client_ip(http_request)
+    
+    await audit.log(
+        action=AuditAction.AUTH_REQUEST,
+        resource_type=ResourceType.AUTH,
+        resource_id=f"{request.provider_id}/{request.key}",
+        user_role=role.value,
+        ip_address=ip,
+    )
     
     try:
         cookies = await service.get_cookie(request.provider_id, request.key)
+        
+        await audit.log(
+            action=AuditAction.AUTH_SUCCESS,
+            resource_type=ResourceType.AUTH,
+            resource_id=f"{request.provider_id}/{request.key}",
+            user_role=role.value,
+            ip_address=ip,
+            details={"cookie_count": len(cookies)},
+        )
         
         return AuthCookieResponse(
             provider_id=request.provider_id,
@@ -293,9 +491,27 @@ async def get_auth_cookie(request: AuthCookieRequest, role: UserRole = Depends(v
             cookies=cookies,
         )
     except AuthenticationError as e:
+        await audit.log(
+            action=AuditAction.AUTH_FAILURE,
+            resource_type=ResourceType.AUTH,
+            resource_id=f"{request.provider_id}/{request.key}",
+            user_role=role.value,
+            ip_address=ip,
+            details={"error": str(e)},
+            success=False,
+        )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
         logger.error(f"认证失败: {e}")
+        await audit.log(
+            action=AuditAction.AUTH_FAILURE,
+            resource_type=ResourceType.AUTH,
+            resource_id=f"{request.provider_id}/{request.key}",
+            user_role=role.value,
+            ip_address=ip,
+            details={"error": str(e)},
+            success=False,
+        )
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
@@ -309,10 +525,21 @@ async def get_cache_stats(role: UserRole = Depends(verify_api_key_with_role)):
 
 
 @router.delete("/cache", response_model=SuccessResponse, tags=["Cache"])
-async def clear_cache(role: UserRole = Depends(verify_api_key_with_role)):
+async def clear_cache(request: Request, role: UserRole = Depends(verify_api_key_with_role)):
     """清空所有缓存"""
     cache = get_cookie_cache()
+    audit = get_audit_log_service()
+    
     count = cache.clear()
+    
+    await audit.log(
+        action=AuditAction.CACHE_CLEAR,
+        resource_type=ResourceType.CACHE,
+        user_role=role.value,
+        ip_address=get_client_ip(request),
+        details={"cleared_count": count},
+    )
+    
     return SuccessResponse(message=f"Cleared {count} cache entries")
 
 
@@ -343,3 +570,51 @@ async def clear_field_cache(
 async def get_user_role(role: UserRole = Depends(verify_api_key_with_role)):
     """获取当前用户角色"""
     return UserRoleResponse(role=role.value)
+
+
+# ==================== 审计日志路由 ====================
+
+@router.get("/logs", response_model=AuditLogListResponse, tags=["Logs"])
+async def list_logs(
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    action: str | None = Query(None, description="按操作类型筛选"),
+    resource_type: str | None = Query(None, description="按资源类型筛选"),
+    resource_id: str | None = Query(None, description="按资源 ID 筛选"),
+    success: bool | None = Query(None, description="按成功状态筛选"),
+    start_time: datetime | None = Query(None, description="开始时间"),
+    end_time: datetime | None = Query(None, description="结束时间"),
+    role: UserRole = Depends(require_admin)
+):
+    """查询审计日志（需要管理员权限）"""
+    audit = get_audit_log_service()
+    
+    result = await audit.get_logs(
+        page=page,
+        page_size=page_size,
+        action=action,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        success=success,
+        start_time=start_time,
+        end_time=end_time,
+    )
+    
+    return AuditLogListResponse(**result)
+
+
+@router.get("/logs/stats", response_model=AuditLogStatsResponse, tags=["Logs"])
+async def get_logs_stats(
+    start_time: datetime | None = Query(None, description="统计开始时间"),
+    end_time: datetime | None = Query(None, description="统计结束时间"),
+    role: UserRole = Depends(require_admin)
+):
+    """获取日志统计信息（需要管理员权限）"""
+    audit = get_audit_log_service()
+    
+    result = await audit.get_stats(
+        start_time=start_time,
+        end_time=end_time,
+    )
+    
+    return AuditLogStatsResponse(**result)

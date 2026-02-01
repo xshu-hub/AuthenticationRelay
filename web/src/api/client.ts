@@ -10,6 +10,9 @@ import type {
   CacheStats,
   SuccessResponse,
   UserRoleResponse,
+  AuditLogListResponse,
+  AuditLogStats,
+  LogQueryParams,
 } from '../types';
 
 const API_BASE = '/api';
@@ -131,4 +134,32 @@ export const cacheApi = {
     request<SuccessResponse>(`/cache/${providerId}/${key}`, {
       method: 'DELETE',
     }),
+};
+
+// ==================== Logs API ====================
+
+export const logsApi = {
+  list: (params?: LogQueryParams) => {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      if (params.page) searchParams.set('page', params.page.toString());
+      if (params.page_size) searchParams.set('page_size', params.page_size.toString());
+      if (params.action) searchParams.set('action', params.action);
+      if (params.resource_type) searchParams.set('resource_type', params.resource_type);
+      if (params.resource_id) searchParams.set('resource_id', params.resource_id);
+      if (params.success !== undefined) searchParams.set('success', params.success.toString());
+      if (params.start_time) searchParams.set('start_time', params.start_time);
+      if (params.end_time) searchParams.set('end_time', params.end_time);
+    }
+    const queryString = searchParams.toString();
+    return request<AuditLogListResponse>(`/logs${queryString ? `?${queryString}` : ''}`);
+  },
+  
+  getStats: (startTime?: string, endTime?: string) => {
+    const searchParams = new URLSearchParams();
+    if (startTime) searchParams.set('start_time', startTime);
+    if (endTime) searchParams.set('end_time', endTime);
+    const queryString = searchParams.toString();
+    return request<AuditLogStats>(`/logs/stats${queryString ? `?${queryString}` : ''}`);
+  },
 };

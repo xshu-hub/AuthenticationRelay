@@ -141,3 +141,36 @@ class CacheStatsResponse(BaseModel):
 class UserRoleResponse(BaseModel):
     """用户角色响应"""
     role: Literal["admin", "user"] = Field(..., description="用户角色")
+
+
+# ==================== 审计日志模型 ====================
+
+class AuditLogResponse(BaseModel):
+    """审计日志响应"""
+    id: int
+    timestamp: str
+    action: str
+    resource_type: str
+    resource_id: str | None = None
+    user_role: str | None = None
+    ip_address: str | None = None
+    details: dict | None = None
+    success: bool = True
+
+
+class AuditLogListResponse(BaseModel):
+    """审计日志列表响应"""
+    items: list[AuditLogResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class AuditLogStatsResponse(BaseModel):
+    """审计日志统计响应"""
+    total: int
+    success_count: int
+    failure_count: int
+    by_action: dict[str, int]
+    by_resource_type: dict[str, int]
+    by_role: dict[str, int]

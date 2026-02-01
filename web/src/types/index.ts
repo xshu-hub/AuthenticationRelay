@@ -104,3 +104,43 @@ export interface ErrorResponse {
   error: string;
   detail?: string;
 }
+
+// 审计日志
+export interface AuditLog {
+  id: number;
+  timestamp: string;
+  action: string;
+  resource_type: string;
+  resource_id?: string;
+  user_role?: string;
+  ip_address?: string;
+  details?: Record<string, unknown>;
+  success: boolean;
+}
+
+export interface AuditLogListResponse {
+  items: AuditLog[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface AuditLogStats {
+  total: number;
+  success_count: number;
+  failure_count: number;
+  by_action: Record<string, number>;
+  by_resource_type: Record<string, number>;
+  by_role: Record<string, number>;
+}
+
+export interface LogQueryParams {
+  page?: number;
+  page_size?: number;
+  action?: string;
+  resource_type?: string;
+  resource_id?: string;
+  success?: boolean;
+  start_time?: string;
+  end_time?: string;
+}

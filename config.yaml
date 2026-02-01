@@ -23,6 +23,15 @@ encryption:
 storage:
   data_dir: "./data"
   providers_file: "providers.json"
+
+# MySQL 数据库配置
+database:
+  host: "localhost"
+  port: 3306
+  user: "root"
+  password: "admin"
+  database: "auth_relay"
+  pool_size: 5
   
 # 日志配置
 logging:

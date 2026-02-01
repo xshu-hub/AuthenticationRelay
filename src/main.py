@@ -19,6 +19,7 @@ from src.utils.config import init_config, get_config
 from src.utils.crypto import init_crypto_manager
 from src.storage.credential import init_credential_store
 from src.storage.cookie_cache import init_cookie_cache
+from src.storage.database import init_database, close_database
 from src.auth.engine import close_auth_service
 
 
@@ -57,11 +58,17 @@ async def lifespan(app: FastAPI):
     logger = logging.getLogger(__name__)
     logger.info("认证中继服务启动中...")
     
+    # 初始化数据库
+    await init_database()
+    logger.info("数据库初始化完成")
+    
     yield
     
     # 关闭时
     logger.info("认证中继服务关闭中...")
     await close_auth_service()
+    await close_database()
+    logger.info("数据库连接已关闭")
 
 
 def create_app(config_path: str | Path | None = None) -> FastAPI:
