@@ -105,11 +105,23 @@ class AuthCookieRequest(BaseModel):
     key: str = Field(..., description="字段标识")
 
 
+class CookieItem(BaseModel):
+    """Cookie 项"""
+    name: str = Field(..., description="Cookie 名称")
+    value: str = Field(..., description="Cookie 值")
+    domain: str = Field(..., description="Cookie 域名")
+    path: str = Field("/", description="Cookie 路径")
+    expires: float | None = Field(None, description="过期时间（Unix 时间戳，秒）")
+    httpOnly: bool = Field(False, description="HttpOnly 标记")
+    secure: bool = Field(False, description="Secure 标记")
+    sameSite: Literal["Strict", "Lax", "None"] | None = Field(None, description="SameSite 属性")
+
+
 class AuthCookieResponse(BaseModel):
     """认证 Cookie 响应"""
     provider_id: str
     key: str
-    cookies: dict[str, str]
+    cookies: list[CookieItem] = Field(..., description="Cookie 列表（Playwright 格式）")
     from_cache: bool = Field(False, description="是否来自缓存")
 
 

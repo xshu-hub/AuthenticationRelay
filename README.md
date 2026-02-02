@@ -122,10 +122,22 @@ curl -X POST http://localhost:8000/api/auth/cookie \
 {
   "provider_id": "sso_a",
   "key": "test1_user",
-  "cookies": {
-    "session_id": "abc123...",
-    "token": "xyz789..."
-  },
+  "cookies": [
+    {
+      "name": "session_id",
+      "value": "abc123...",
+      "domain": ".example.com",
+      "path": "/",
+      "httpOnly": true,
+      "secure": true
+    },
+    {
+      "name": "token",
+      "value": "xyz789...",
+      "domain": ".example.com",
+      "path": "/"
+    }
+  ],
   "from_cache": false
 }
 ```
@@ -136,7 +148,7 @@ curl -X POST http://localhost:8000/api/auth/cookie \
 import httpx
 from playwright.sync_api import sync_playwright
 
-# 获取 Cookie
+# 获取 Cookie（返回完整的 Playwright 格式）
 response = httpx.post(
     "http://localhost:8000/api/auth/cookie",
     headers={"X-API-Key": "your-secret-api-key-here"},
@@ -149,14 +161,8 @@ with sync_playwright() as p:
     browser = p.chromium.launch()
     context = browser.new_context()
     
-    # 设置 Cookie
-    for name, value in cookies.items():
-        context.add_cookies([{
-            "name": name,
-            "value": value,
-            "domain": ".example.com",  # 根据实际域名修改
-            "path": "/"
-        }])
+    # 直接设置 Cookie（已包含 domain, path, expires 等完整信息）
+    context.add_cookies(cookies)
     
     page = context.new_page()
     page.goto("https://app.example.com")

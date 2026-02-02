@@ -18,6 +18,7 @@ from src.api.models import (
     FieldAccountResponse,
     AuthCookieRequest,
     AuthCookieResponse,
+    CookieItem,
     SuccessResponse,
     ErrorResponse,
     CacheStatsResponse,

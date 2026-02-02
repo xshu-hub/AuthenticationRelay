@@ -405,10 +405,25 @@ X-API-Key: your-api-key-here
 {
   "provider_id": "sso_a",
   "key": "user1",
-  "cookies": {
-    "session_id": "abc123...",
-    "token": "xyz789..."
-  },
+  "cookies": [
+    {
+      "name": "session_id",
+      "value": "abc123...",
+      "domain": ".example.com",
+      "path": "/",
+      "expires": 1735689600,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "token",
+      "value": "xyz789...",
+      "domain": ".example.com",
+      "path": "/",
+      "secure": true
+    }
+  ],
   "from_cache": false
 }
 ```
@@ -419,8 +434,21 @@ X-API-Key: your-api-key-here
 |------|------|------|
 | `provider_id` | string | SSO 平台 ID |
 | `key` | string | 字段标识 |
-| `cookies` | object | Cookie 键值对 |
+| `cookies` | array | Cookie 列表（Playwright 格式） |
 | `from_cache` | boolean | 是否来自缓存 |
+
+**Cookie 项字段说明：**
+
+| 字段 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| `name` | string | 是 | Cookie 名称 |
+| `value` | string | 是 | Cookie 值 |
+| `domain` | string | 是 | Cookie 域名 |
+| `path` | string | 是 | Cookie 路径 |
+| `expires` | number | 否 | 过期时间（Unix 时间戳，秒） |
+| `httpOnly` | boolean | 否 | HttpOnly 标记 |
+| `secure` | boolean | 否 | Secure 标记 |
+| `sameSite` | string | 否 | SameSite 属性（Strict/Lax/None） |
 
 ---
 
@@ -742,6 +770,7 @@ response = httpx.post(
     json={"provider_id": "sso_a", "key": "user1"}
 )
 cookies = response.json()["cookies"]
+# cookies 是完整的 Playwright 格式列表
 print(cookies)
 ```
 
@@ -751,7 +780,7 @@ print(cookies)
 import httpx
 from playwright.sync_api import sync_playwright
 
-# 获取 Cookie
+# 获取 Cookie（返回的是完整的 Playwright 格式）
 response = httpx.post(
     "http://localhost:8000/api/auth/cookie",
     headers={"X-API-Key": "your-api-key"},
@@ -759,21 +788,44 @@ response = httpx.post(
 )
 cookies = response.json()["cookies"]
 
-# 在 Playwright 中使用
+# 在 Playwright 中使用（直接使用，无需转换）
 with sync_playwright() as p:
     browser = p.chromium.launch()
     context = browser.new_context()
     
-    # 设置 Cookie
-    for name, value in cookies.items():
-        context.add_cookies([{
-            "name": name,
-            "value": value,
-            "domain": ".example.com",
-            "path": "/"
-        }])
+    # 直接设置 Cookie（已包含 domain, path, expires 等完整信息）
+    context.add_cookies(cookies)
     
     page = context.new_page()
     page.goto("https://app.example.com")
     # 现在已经是登录状态
+```
+
+### 异步 Playwright 示例
+
+```python
+import httpx
+from playwright.async_api import async_playwright
+
+async def main():
+    # 获取 Cookie
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            "http://localhost:8000/api/auth/cookie",
+            headers={"X-API-Key": "your-api-key"},
+            json={"provider_id": "sso_a", "key": "user1"}
+        )
+        cookies = response.json()["cookies"]
+    
+    # 在 Playwright 中使用
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        context = await browser.new_context()
+        
+        # 直接设置完整的 Cookie
+        await context.add_cookies(cookies)
+        
+        page = await context.new_page()
+        await page.goto("https://app.example.com")
+        # 现在已经是登录状态
 ```

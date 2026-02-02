@@ -51,7 +51,7 @@ class AuthEngine:
             await self._playwright.stop()
             self._playwright = None
     
-    async def login(self, provider_config: dict, username: str, password: str) -> dict[str, str]:
+    async def login(self, provider_config: dict, username: str, password: str) -> list[dict]:
         """
         执行登录并获取 Cookie
         
@@ -61,7 +61,7 @@ class AuthEngine:
             password: 密码
             
         Returns:
-            登录后的 Cookie 字典
+            登录后的 Cookie 列表（Playwright 格式，包含 name, value, domain, path, expires 等）
         """
         config = get_config()
         browser = await self._ensure_browser()
@@ -116,12 +116,32 @@ class AuthEngine:
             if wait_after_login > 0:
                 await asyncio.sleep(wait_after_login / 1000)
             
-            # 8. 提取 Cookie
+            # 8. 提取 Cookie（保留完整的 Playwright cookie 格式）
             cookies = await context.cookies()
-            cookie_dict = {cookie["name"]: cookie["value"] for cookie in cookies}
             
-            logger.info(f"登录成功，获取到 {len(cookie_dict)} 个 Cookie")
-            return cookie_dict
+            # 转换为标准格式，保留所有必要字段
+            cookie_list = []
+            for cookie in cookies:
+                cookie_item = {
+                    "name": cookie["name"],
+                    "value": cookie["value"],
+                    "domain": cookie.get("domain", ""),
+                    "path": cookie.get("path", "/"),
+                }
+                # 可选字段
+                if "expires" in cookie and cookie["expires"] > 0:
+                    cookie_item["expires"] = cookie["expires"]
+                if cookie.get("httpOnly"):
+                    cookie_item["httpOnly"] = True
+                if cookie.get("secure"):
+                    cookie_item["secure"] = True
+                if cookie.get("sameSite") and cookie["sameSite"] != "None":
+                    cookie_item["sameSite"] = cookie["sameSite"]
+                
+                cookie_list.append(cookie_item)
+            
+            logger.info(f"登录成功，获取到 {len(cookie_list)} 个 Cookie")
+            return cookie_list
             
         except Exception as e:
             logger.error(f"登录失败: {e}")
@@ -144,13 +164,13 @@ class AuthEngine:
             # 默认等待网络空闲
             await page.wait_for_load_state("networkidle")
     
-    async def validate_cookies(self, provider_config: dict, cookies: dict[str, str]) -> bool:
+    async def validate_cookies(self, provider_config: dict, cookies: list[dict]) -> bool:
         """
         验证 Cookie 是否有效
         
         Args:
             provider_config: SSO 平台配置
-            cookies: 要验证的 Cookie
+            cookies: 要验证的 Cookie 列表（Playwright 格式）
             
         Returns:
             Cookie 是否有效
@@ -166,17 +186,8 @@ class AuthEngine:
         context = await browser.new_context()
         
         try:
-            # 设置 Cookie
-            cookie_list = [
-                {
-                    "name": name,
-                    "value": value,
-                    "domain": self._extract_domain(validate_url),
-                    "path": "/",
-                }
-                for name, value in cookies.items()
-            ]
-            await context.add_cookies(cookie_list)
+            # 直接使用完整的 Cookie 列表
+            await context.add_cookies(cookies)
             
             page = await context.new_page()
             page.set_default_timeout(config.playwright.timeout)
@@ -244,7 +255,7 @@ class AuthService:
         """初始化认证服务"""
         self._engine = AuthEngine()
     
-    async def get_cookie(self, provider_id: str, key: str) -> dict[str, str]:
+    async def get_cookie(self, provider_id: str, key: str) -> list[dict]:
         """
         获取认证 Cookie
         
@@ -256,7 +267,7 @@ class AuthService:
             key: 字段标识
             
         Returns:
-            Cookie 字典
+            Cookie 列表（Playwright 格式）
         """
         cache = get_cookie_cache()
         store = get_credential_store()

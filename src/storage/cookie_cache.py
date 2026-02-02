@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 @dataclass
 class CachedCookie:
     """缓存的 Cookie 数据"""
-    cookies: dict[str, str]  # Cookie 键值对
+    cookies: list[dict[str, Any]]  # 完整的 Cookie 列表（Playwright 格式）
     created_at: datetime = field(default_factory=datetime.now)
     last_validated_at: datetime | None = None
     validation_count: int = 0
@@ -28,7 +28,7 @@ class CookieCache:
         # 缓存结构: {provider_id: {key: CachedCookie}}
         self._cache: dict[str, dict[str, CachedCookie]] = {}
     
-    def get(self, provider_id: str, key: str) -> dict[str, str] | None:
+    def get(self, provider_id: str, key: str) -> list[dict[str, Any]] | None:
         """
         获取缓存的 Cookie
         
@@ -37,7 +37,7 @@ class CookieCache:
             key: 字段标识
             
         Returns:
-            Cookie 字典，如果不存在则返回 None
+            Cookie 列表（Playwright 格式），如果不存在则返回 None
         """
         provider_cache = self._cache.get(provider_id)
         if not provider_cache:
@@ -47,7 +47,8 @@ class CookieCache:
         if not cached:
             return None
         
-        return cached.cookies.copy()
+        # 返回深拷贝
+        return [cookie.copy() for cookie in cached.cookies]
     
     def get_cached_entry(self, provider_id: str, key: str) -> CachedCookie | None:
         """
@@ -66,19 +67,22 @@ class CookieCache:
         
         return provider_cache.get(key)
     
-    def set(self, provider_id: str, key: str, cookies: dict[str, str]) -> None:
+    def set(self, provider_id: str, key: str, cookies: list[dict[str, Any]]) -> None:
         """
         设置 Cookie 缓存
         
         Args:
             provider_id: SSO 平台 ID
             key: 字段标识
-            cookies: Cookie 字典
+            cookies: Cookie 列表（Playwright 格式）
         """
         if provider_id not in self._cache:
             self._cache[provider_id] = {}
         
-        self._cache[provider_id][key] = CachedCookie(cookies=cookies.copy())
+        # 存储深拷贝
+        self._cache[provider_id][key] = CachedCookie(
+            cookies=[cookie.copy() for cookie in cookies]
+        )
     
     def mark_validated(self, provider_id: str, key: str) -> None:
         """
