@@ -1,11 +1,7 @@
 """
 MySQL 数据库模块 - 管理数据库连接池和表结构
 """
-import json
 import logging
-from datetime import datetime
-from pathlib import Path
-from typing import Any
 
 import aiomysql
 
@@ -133,106 +129,6 @@ class Database:
                     await cursor.execute(create_sql)
                     logger.info(f"表 {table_name} 已就绪")
     
-    async def migrate_from_json(self, json_file: Path) -> bool:
-        """
-        从 JSON 文件迁移数据到数据库
-        
-        Args:
-            json_file: JSON 数据文件路径
-            
-        Returns:
-            是否成功迁移
-        """
-        if not json_file.exists():
-            logger.info("未找到 JSON 数据文件，跳过迁移")
-            return False
-        
-        try:
-            with open(json_file, "r", encoding="utf-8") as f:
-                providers_data = json.load(f)
-            
-            if not providers_data:
-                logger.info("JSON 数据文件为空，跳过迁移")
-                return False
-            
-            # 检查数据库是否已有数据
-            async with self._pool.acquire() as conn:
-                async with conn.cursor() as cursor:
-                    await cursor.execute("SELECT COUNT(*) FROM providers")
-                    result = await cursor.fetchone()
-                    if result[0] > 0:
-                        logger.info("数据库已有数据，跳过迁移")
-                        return False
-            
-            # 迁移数据
-            migrated_count = 0
-            for provider_id, provider in providers_data.items():
-                await self._migrate_provider(provider_id, provider)
-                migrated_count += 1
-            
-            logger.info(f"成功从 JSON 迁移 {migrated_count} 个 Provider")
-            
-            # 备份原 JSON 文件
-            backup_file = json_file.with_suffix(".json.bak")
-            json_file.rename(backup_file)
-            logger.info(f"原 JSON 文件已备份为: {backup_file}")
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"迁移数据失败: {e}")
-            return False
-    
-    async def _migrate_provider(self, provider_id: str, provider: dict) -> None:
-        """迁移单个 Provider 及其 Fields"""
-        async with self._pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                # 插入 Provider
-                await cursor.execute(
-                    """
-                    INSERT INTO providers (
-                        id, name, login_url, username_selector, password_selector,
-                        submit_selector, success_indicator, success_indicator_type,
-                        validate_url, invalid_indicator, invalid_indicator_type,
-                        wait_after_login, created_at, updated_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """,
-                    (
-                        provider_id,
-                        provider.get("name", ""),
-                        provider.get("login_url", ""),
-                        provider.get("username_selector", ""),
-                        provider.get("password_selector", ""),
-                        provider.get("submit_selector", ""),
-                        provider.get("success_indicator"),
-                        provider.get("success_indicator_type", "url_contains"),
-                        provider.get("validate_url"),
-                        provider.get("invalid_indicator"),
-                        provider.get("invalid_indicator_type", "url_contains"),
-                        provider.get("wait_after_login", 2000),
-                        provider.get("created_at"),
-                        provider.get("updated_at"),
-                    )
-                )
-                
-                # 插入 Fields
-                for field in provider.get("fields", []):
-                    await cursor.execute(
-                        """
-                        INSERT INTO fields (
-                            provider_id, `key`, username, password, created_at, updated_at
-                        ) VALUES (%s, %s, %s, %s, %s, %s)
-                        """,
-                        (
-                            provider_id,
-                            field.get("key", ""),
-                            field.get("username", ""),
-                            field.get("password", ""),  # 已加密的密码
-                            field.get("created_at"),
-                            field.get("updated_at"),
-                        )
-                    )
-    
     async def execute(
         self,
         query: str,
@@ -304,19 +200,13 @@ async def get_database() -> Database:
 
 async def init_database() -> Database:
     """
-    初始化数据库（创建表结构并迁移数据）
+    初始化数据库（创建表结构）
     
     Returns:
         数据库实例
     """
     db = await Database.get_instance()
     await db.init_tables()
-    
-    # 尝试从 JSON 迁移数据
-    config = get_config()
-    json_file = Path(config.storage.data_dir) / config.storage.providers_file
-    await db.migrate_from_json(json_file)
-    
     return db
 
 

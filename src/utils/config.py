@@ -25,7 +25,6 @@ class EncryptionConfig(BaseModel):
 class StorageConfig(BaseModel):
     """存储配置"""
     data_dir: str = "./data"
-    providers_file: str = "providers.json"
 
 
 class DatabaseConfig(BaseModel):

@@ -19,17 +19,16 @@ encryption:
   # 如果未设置，将自动生成并保存到 data/encryption.key
   key: null
 
-# 数据存储路径
+# 数据存储路径（用于存储加密密钥等）
 storage:
   data_dir: "./data"
-  providers_file: "providers.json"
 
 # MySQL 数据库配置
 database:
   host: "localhost"
   port: 3306
   user: "root"
-  password: "admin"
+  password: "yinwang@123456"
   database: "auth_relay"
   pool_size: 5
   
