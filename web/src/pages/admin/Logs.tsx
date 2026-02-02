@@ -127,6 +127,33 @@ export default function AdminLogs() {
     return 'bg-gray-100 text-gray-700';
   };
   
+  // 格式化详情值
+  const formatDetailValue = (value: unknown): string => {
+    if (value === null || value === undefined) return '-';
+    if (typeof value === 'boolean') return value ? '是' : '否';
+    if (typeof value === 'number') return String(value);
+    if (typeof value === 'string') return value;
+    if (Array.isArray(value)) return value.join(', ');
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+  };
+  
+  // 获取详情字段的友好名称
+  const getDetailLabel = (key: string): string => {
+    const labels: Record<string, string> = {
+      name: '名称',
+      username: '用户名',
+      error: '错误信息',
+      count: '数量',
+      cookie_count: 'Cookie 数量',
+      cleared_count: '清除数量',
+      updated_fields: '更新字段',
+      provider_id: '平台 ID',
+      key: '字段标识',
+    };
+    return labels[key] || key;
+  };
+  
   // 分页组件
   const totalPages = Math.ceil(total / pageSize);
   
@@ -336,9 +363,25 @@ export default function AdminLogs() {
                     <tr key={`${log.id}-details`}>
                       <td colSpan={7} className="px-4 py-3 bg-neutral-50">
                         <div className="text-xs font-medium text-neutral-500 mb-2">详情</div>
-                        <pre className="text-sm text-neutral-700 bg-white p-3 rounded border border-neutral-200 overflow-auto">
-                          {JSON.stringify(log.details, null, 2)}
-                        </pre>
+                        <div className="bg-white p-3 rounded border border-neutral-200">
+                          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+                            {Object.entries(log.details).map(([key, value]) => (
+                              <div key={key} className="flex flex-col">
+                                <dt className="text-xs font-medium text-neutral-500">
+                                  {getDetailLabel(key)}
+                                </dt>
+                                <dd 
+                                  className={`text-sm text-neutral-700 mt-0.5 break-words ${
+                                    key === 'error' ? 'text-red-600' : ''
+                                  }`}
+                                  title={formatDetailValue(value)}
+                                >
+                                  {formatDetailValue(value)}
+                                </dd>
+                              </div>
+                            ))}
+                          </dl>
+                        </div>
                       </td>
                     </tr>
                   )}
